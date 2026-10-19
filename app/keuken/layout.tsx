@@ -23,6 +23,9 @@ export default async function KeukenLayout({ children }: { children: React.React
           <Link href="/keuken/skills" className="px-3 py-2 rounded hover:bg-creme/10">
             Skills beheer
           </Link>
+          <Link href="/keuken/documenten" className="px-3 py-2 rounded hover:bg-creme/10">
+            Documenten
+          </Link>
         </nav>
         <div className="mt-auto">
           <LogoutButton className="text-creme/60 hover:text-creme text-sm" />

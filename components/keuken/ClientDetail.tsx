@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { COURSES, COURSE_ORDER, type CourseId } from "@/lib/content/courses";
 import { PAKKETTEN, STANDAARD_WELKOM } from "@/lib/content/packages";
-import { checkItems, STANDAARD_DOCS } from "@/lib/content/checklist";
+import { checkItems } from "@/lib/content/checklist";
+import { datumTijd, downloadPdf } from "@/lib/content/documenten";
+import DocTekst from "@/components/documenten/DocTekst";
 import type { Client, ClientCourse, CourseStatus, DocumentRow, ActivityRow } from "@/lib/supabase/types";
 import type { Profiel } from "@/lib/content/profiel";
 
@@ -18,6 +20,11 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "activiteit", label: "Activiteit" },
   { id: "gegevens", label: "Gegevens" },
 ];
+
+interface SjabloonMeta {
+  id: string;
+  titel: string;
+}
 
 interface SkillMeta {
   id: string;
@@ -32,6 +39,7 @@ export default function ClientDetail({
   activiteit,
   liveSkills,
   allSkills,
+  sjablonen = [],
 }: {
   client: Client;
   courses: ClientCourse[];
@@ -39,6 +47,7 @@ export default function ClientDetail({
   activiteit: ActivityRow[];
   liveSkills: SkillMeta[];
   allSkills: SkillMeta[];
+  sjablonen?: SjabloonMeta[];
 }) {
   const [tab, setTab] = useState<Tab>("checklist");
   const voornaam = (client.naam || "").split(" ")[0];
@@ -71,7 +80,7 @@ export default function ClientDetail({
       {tab === "checklist" && <ChecklistTab client={client} courses={courses} documents={documents} />}
       {tab === "menu" && <MenuTab clientId={client.id} courses={courses} liveSkills={liveSkills} allSkills={allSkills} />}
       {tab === "profiel" && <ProfielTab client={client} />}
-      {tab === "documenten" && <DocumentenTab clientId={client.id} documents={documents} />}
+      {tab === "documenten" && <DocumentenTab clientId={client.id} documents={documents} sjablonen={sjablonen} />}
       {tab === "activiteit" && <ActiviteitTab activiteit={activiteit} />}
       {tab === "gegevens" && <GegevensTab client={client} voornaam={voornaam} />}
     </div>
@@ -120,11 +129,13 @@ function MenuTab({
   courses,
   liveSkills,
   allSkills,
+  sjablonen = [],
 }: {
   clientId: string;
   courses: ClientCourse[];
   liveSkills: SkillMeta[];
   allSkills: SkillMeta[];
+  sjablonen?: SjabloonMeta[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<CourseId | null>(null);
@@ -271,66 +282,115 @@ function ProfielTab({ client }: { client: Client }) {
   );
 }
 
-function DocumentenTab({ clientId, documents }: { clientId: string; documents: DocumentRow[] }) {
+function DocumentenTab({ clientId, documents, sjablonen }: { clientId: string; documents: DocumentRow[]; sjablonen: SjabloonMeta[] }) {
   const router = useRouter();
-  const [titel, setTitel] = useState("");
-  const [type, setType] = useState("Overig");
-  const [tekenen, setTekenen] = useState(true);
   const [bezig, setBezig] = useState(false);
+  const [melding, setMelding] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const [kies, setKies] = useState("");
+  const aanwezig = new Set(documents.map((d) => d.template_id));
+  const beschikbaar = sjablonen.filter((s) => !aanwezig.has(s.id));
 
-  async function toevoegen() {
-    if (!titel) return;
+  async function klaarzetten(template?: string) {
     setBezig(true);
-    const supabase = createClient();
-    await supabase.from("documents").insert({ client_id: clientId, titel, type, tekenen, status: tekenen ? "te-tekenen" : "info" });
+    setMelding("");
+    const { data, error } = await createClient().rpc("documenten_klaarzetten", { p_client: clientId, p_template: template ?? null });
     setBezig(false);
-    setTitel("");
+    setKies("");
+    setMelding(error ? "Dat lukte niet." : data ? `${data} document${data === 1 ? "" : "en"} klaargezet.` : "Alles staat al klaar en is bijgewerkt.");
     router.refresh();
   }
 
-  async function standaardSet() {
-    setBezig(true);
-    const supabase = createClient();
-    await supabase.from("documents").insert(STANDAARD_DOCS.map((d) => ({ client_id: clientId, ...d, status: d.tekenen ? "te-tekenen" : "info" })));
-    setBezig(false);
+  async function verwijderen(d: DocumentRow) {
+    if (!confirm(`"${d.titel}" weghalen bij deze klant?`)) return;
+    await createClient().from("documents").delete().eq("id", d.id);
     router.refresh();
+  }
+
+  async function download(d: DocumentRow) {
+    setBezig(true);
+    try {
+      await downloadPdf(createClient(), d.id, d.titel);
+    } catch {
+      setMelding("Downloaden lukte niet.");
+    }
+    setBezig(false);
   }
 
   return (
     <div className="grid gap-6">
       <ul className="grid gap-2">
         {documents.map((d) => (
-          <li key={d.id} className="flex items-center justify-between rounded-md border border-line bg-surface px-4 py-2.5">
-            <span>
-              {d.titel} <span className="small muted">({d.type})</span>
-            </span>
-            <span className="pill open">{d.status}</span>
+          <li key={d.id} className="rounded-md border border-line bg-surface">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+              <span>
+                <span className="block">{d.titel}</span>
+                <span className="small muted">
+                  {d.status === "getekend"
+                    ? `Getekend door ${d.getekend_naam ?? "klant"} op ${datumTijd(d.getekend_op)}`
+                    : d.status === "info"
+                      ? "Ter informatie"
+                      : "Wacht op handtekening"}
+                  {d.versie ? ` · versie ${d.versie}` : ""}
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className={`pill ${d.status === "getekend" ? "klaar" : "open"}`}>{d.status === "getekend" ? "Getekend" : d.status === "info" ? "Info" : "Te tekenen"}</span>
+                <button className="small underline muted" onClick={() => setOpen(open === d.id ? null : d.id)}>
+                  {open === d.id ? "Sluiten" : "Bekijken"}
+                </button>
+                <button className="btn sm ghost" disabled={bezig} onClick={() => download(d)}>
+                  PDF
+                </button>
+                {d.status !== "getekend" && (
+                  <button className="small underline muted" onClick={() => verwijderen(d)}>
+                    Weghalen
+                  </button>
+                )}
+              </span>
+            </div>
+            {open === d.id && (
+              <div className="border-t border-line p-5 bg-bg">
+                {d.inhoud?.trim() ? <DocTekst inhoud={d.inhoud} /> : <p className="muted small">Nog geen tekst.</p>}
+                {d.status === "getekend" && d.getekend_hash && (
+                  <p className="small muted mt-4 break-all">
+                    IP {d.getekend_ip ?? "onbekend"} · vingerafdruk {d.getekend_hash}
+                  </p>
+                )}
+              </div>
+            )}
           </li>
         ))}
-        {!documents.length && <p className="muted small">Nog geen documenten. Plaats de standaardset, of voeg er één toe.</p>}
+        {!documents.length && <p className="muted small">Nog geen documenten voor deze klant.</p>}
       </ul>
-      {!documents.length && (
-        <button onClick={standaardSet} disabled={bezig} className="btn ghost self-start">
-          Standaardset plaatsen (overeenkomst, voorwaarden, verwerkersovereenkomst)
+
+      <div className="flex flex-wrap items-end gap-3">
+        <button onClick={() => klaarzetten()} disabled={bezig} className="btn ghost">
+          Klaarzetten volgens pakket en extra&apos;s
         </button>
-      )}
-      <div className="panel border border-line rounded-md p-4 grid gap-3 max-w-md">
-        <label className="field">
-          Titel
-          <input value={titel} onChange={(e) => setTitel(e.target.value)} />
-        </label>
-        <label className="field">
-          Type
-          <input value={type} onChange={(e) => setType(e.target.value)} />
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={tekenen} onChange={(e) => setTekenen(e.target.checked)} />
-          Moet getekend worden
-        </label>
-        <button onClick={toevoegen} disabled={bezig || !titel} className="btn sm self-start">
-          Document klaarzetten
-        </button>
+        {beschikbaar.length > 0 && (
+          <div className="flex items-end gap-2">
+            <label className="field">
+              Handmatig toevoegen
+              <select value={kies} onChange={(e) => setKies(e.target.value)}>
+                <option value="">Kies een document</option>
+                {beschikbaar.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.titel}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn sm" disabled={!kies || bezig} onClick={() => klaarzetten(kies)}>
+              Toevoegen
+            </button>
+          </div>
+        )}
       </div>
+      {melding && <p className="small muted">{melding}</p>}
+      <p className="small muted">
+        De teksten pas je aan onder Keuken → Documenten. Bij een nieuwe klant en bij een bijgeboekte extra gebeurt het klaarzetten vanzelf.
+      </p>
     </div>
   );
 }

@@ -27,8 +27,11 @@ export const CHECKLIST: ChecklistFase[] = [
       { id: "aanbetaling", t: "Aanbetaling of eerste factuur voldaan" },
       {
         id: "contracten",
-        t: "Overeenkomst, voorwaarden en verwerkersovereenkomst getekend",
-        auto: (c) => c.documents.filter((d) => d.tekenen).every((d) => d.status === "getekend"),
+        t: "Overeenkomst, voorwaarden en andere documenten getekend",
+        auto: (c) => {
+          const teTekenen = c.documents.filter((d) => d.tekenen);
+          return teTekenen.length > 0 && teTekenen.every((d) => d.status === "getekend");
+        },
       },
       { id: "uitnodiging", t: "Portaal-uitnodiging verstuurd", auto: (c) => c.client.uitgenodigd },
     ],
@@ -91,9 +94,5 @@ export function openChecks(ctx: ChecklistCtx) {
   return checkItems(ctx).reduce((n, f) => n + f.items.filter((i) => !i.klaar).length, 0);
 }
 
-export const STANDAARD_DOCS: { titel: string; type: string; tekenen: boolean }[] = [
-  { titel: "Overeenkomst van opdracht", type: "Overeenkomst", tekenen: true },
-  { titel: "Algemene voorwaarden", type: "Algemene voorwaarden", tekenen: true },
-  { titel: "Verwerkersovereenkomst", type: "Verwerkersovereenkomst", tekenen: true },
-  { titel: "Welkomstgids", type: "Overig", tekenen: false },
-];
+// De standaarddocumenten staan nu als sjablonen in de database (supabase/04-documenten.sql)
+// en worden per pakket en extra automatisch klaargezet.

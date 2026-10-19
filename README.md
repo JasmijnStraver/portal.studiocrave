@@ -29,6 +29,7 @@ gedaan.
    - `supabase/01-schema.sql`
    - `supabase/02-skills.sql`
    - `supabase/03-vragenlijst.sql`
+   - `supabase/04-documenten.sql` (contracten: sjablonen, ondertekenen, PDF)
 3. **Jezelf admin maken**: registreer een account (via `/login` nadat je de
    env-variabelen hieronder hebt gezet, of via het Supabase-dashboard), en
    zet in tabel `profiles` jouw rol op `admin`:
@@ -43,6 +44,7 @@ gedaan.
    supabase functions deploy run-skill
    supabase functions deploy platform-update
    supabase functions deploy uitnodigen
+   supabase functions deploy teken-document
    ```
 6. **Secrets zetten** voor de Edge Functions:
    ```
@@ -53,6 +55,18 @@ gedaan.
    koppel een maildienst (bijv. Resend) met afzender @studiocrave.nl.
 8. **Cron** voor `platform-update`: Supabase → Integrations → Cron, dagelijks
    om 06:00.
+
+## Documenten en contracten
+
+De teksten staan als sjabloon in de database (`document_templates`) en beheer je
+onder **Keuken → Documenten**. Per sjabloon kies je bij welk pakket en welke extra
+hij hoort; bij een nieuwe klant en bij een bijgeboekte extra zet het portaal ze
+automatisch klaar, met naam, bedrijf en pakket ingevuld. De klant leest het
+document in haar portaal en tekent in het tekenvak. De Edge Function
+`teken-document` maakt dan de PDF (tekst, beide handtekeningen en een
+ondertekeningsbewijs met datum, tijd, IP en een SHA-256-vingerafdruk) en zet die
+in `klanten/<client_id>/documenten/`. Een getekend document is daarna vergrendeld.
+Jouw eigen handtekening zet je één keer in de keuken.
 
 ## Skills
 
