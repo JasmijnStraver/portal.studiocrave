@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { COURSES, COURSE_ORDER, type CourseId } from "@/lib/content/courses";
-import { PAKKETTEN, STANDAARD_WELKOM } from "@/lib/content/packages";
-import { checkItems, STANDAARD_DOCS } from "@/lib/content/checklist";
+import { EXTRAS, PAKKETTEN, STANDAARD_WELKOM, inbegrepen } from "@/lib/content/packages";
+import { checkItems } from "@/lib/content/checklist";
+import { datumTijd, downloadPdf } from "@/lib/content/documenten";
+import DocTekst from "@/components/documenten/DocTekst";
 import type { Client, ClientCourse, CourseStatus, DocumentRow, ActivityRow } from "@/lib/supabase/types";
 import type { Profiel } from "@/lib/content/profiel";
 
@@ -18,6 +20,11 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "activiteit", label: "Activiteit" },
   { id: "gegevens", label: "Gegevens" },
 ];
+
+interface SjabloonMeta {
+  id: string;
+  titel: string;
+}
 
 interface SkillMeta {
   id: string;
@@ -32,6 +39,7 @@ export default function ClientDetail({
   activiteit,
   liveSkills,
   allSkills,
+  sjablonen = [],
 }: {
   client: Client;
   courses: ClientCourse[];
@@ -39,6 +47,7 @@ export default function ClientDetail({
   activiteit: ActivityRow[];
   liveSkills: SkillMeta[];
   allSkills: SkillMeta[];
+  sjablonen?: SjabloonMeta[];
 }) {
   const [tab, setTab] = useState<Tab>("checklist");
   const voornaam = (client.naam || "").split(" ")[0];
@@ -71,7 +80,7 @@ export default function ClientDetail({
       {tab === "checklist" && <ChecklistTab client={client} courses={courses} documents={documents} />}
       {tab === "menu" && <MenuTab clientId={client.id} courses={courses} liveSkills={liveSkills} allSkills={allSkills} />}
       {tab === "profiel" && <ProfielTab client={client} />}
-      {tab === "documenten" && <DocumentenTab clientId={client.id} documents={documents} />}
+      {tab === "documenten" && <DocumentenTab clientId={client.id} documents={documents} sjablonen={sjablonen} />}
       {tab === "activiteit" && <ActiviteitTab activiteit={activiteit} />}
       {tab === "gegevens" && <GegevensTab client={client} voornaam={voornaam} />}
     </div>
@@ -120,11 +129,13 @@ function MenuTab({
   courses,
   liveSkills,
   allSkills,
+  sjablonen = [],
 }: {
   clientId: string;
   courses: ClientCourse[];
   liveSkills: SkillMeta[];
   allSkills: SkillMeta[];
+  sjablonen?: SjabloonMeta[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState<CourseId | null>(null);
@@ -271,66 +282,120 @@ function ProfielTab({ client }: { client: Client }) {
   );
 }
 
-function DocumentenTab({ clientId, documents }: { clientId: string; documents: DocumentRow[] }) {
+function DocumentenTab({ clientId, documents, sjablonen }: { clientId: string; documents: DocumentRow[]; sjablonen: SjabloonMeta[] }) {
   const router = useRouter();
-  const [titel, setTitel] = useState("");
-  const [type, setType] = useState("Overig");
-  const [tekenen, setTekenen] = useState(true);
   const [bezig, setBezig] = useState(false);
+  const [melding, setMelding] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const [kies, setKies] = useState("");
+  const aanwezig = new Set(documents.map((d) => d.template_id));
+  const beschikbaar = sjablonen.filter((s) => !aanwezig.has(s.id));
 
-  async function toevoegen() {
-    if (!titel) return;
+  async function klaarzetten(template?: string) {
     setBezig(true);
-    const supabase = createClient();
-    await supabase.from("documents").insert({ client_id: clientId, titel, type, tekenen, status: tekenen ? "te-tekenen" : "info" });
+    setMelding("");
+    const { data, error } = await createClient().rpc("documenten_klaarzetten", { p_client: clientId, p_template: template ?? null });
     setBezig(false);
-    setTitel("");
+    setKies("");
+    setMelding(error ? "Dat lukte niet." : data ? `${data} document${data === 1 ? "" : "en"} klaargezet.` : "Alles staat al klaar en is bijgewerkt.");
     router.refresh();
   }
 
-  async function standaardSet() {
-    setBezig(true);
-    const supabase = createClient();
-    await supabase.from("documents").insert(STANDAARD_DOCS.map((d) => ({ client_id: clientId, ...d, status: d.tekenen ? "te-tekenen" : "info" })));
-    setBezig(false);
+  async function verwijderen(d: DocumentRow) {
+    if (!confirm(`"${d.titel}" weghalen bij deze klant?`)) return;
+    await createClient().from("documents").delete().eq("id", d.id);
     router.refresh();
+  }
+
+  async function download(d: DocumentRow) {
+    setBezig(true);
+    try {
+      await downloadPdf(createClient(), d.id, d.titel);
+    } catch {
+      setMelding("Downloaden lukte niet.");
+    }
+    setBezig(false);
   }
 
   return (
     <div className="grid gap-6">
       <ul className="grid gap-2">
         {documents.map((d) => (
-          <li key={d.id} className="flex items-center justify-between rounded-md border border-line bg-surface px-4 py-2.5">
-            <span>
-              {d.titel} <span className="small muted">({d.type})</span>
-            </span>
-            <span className="pill open">{d.status}</span>
+          <li key={d.id} className="rounded-md border border-line bg-surface">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+              <span>
+                <span className="block">{d.titel}</span>
+                <span className="small muted">
+                  {d.status === "getekend"
+                    ? `${d.tekenen ? "Getekend" : "Akkoord gegeven"} door ${d.getekend_naam ?? "klant"} op ${datumTijd(d.getekend_op)}`
+                    : d.tekenen
+                      ? "Met handtekening · nog niet getekend"
+                      : "Met akkoord · nog geen akkoord"}
+                  {d.versie ? ` · versie ${d.versie}` : ""}
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span className={`pill ${d.status === "getekend" ? "klaar" : "open"}`}>
+                  {d.status === "getekend" ? (d.tekenen ? "Getekend" : "Akkoord") : d.tekenen ? "Te tekenen" : "Wacht op akkoord"}
+                </span>
+                <button className="small underline muted" onClick={() => setOpen(open === d.id ? null : d.id)}>
+                  {open === d.id ? "Sluiten" : "Bekijken"}
+                </button>
+                {d.status === "getekend" && (
+                  <button className="btn sm ghost" disabled={bezig} onClick={() => download(d)}>
+                    PDF
+                  </button>
+                )}
+                {d.status !== "getekend" && (
+                  <button className="small underline muted" onClick={() => verwijderen(d)}>
+                    Weghalen
+                  </button>
+                )}
+              </span>
+            </div>
+            {open === d.id && (
+              <div className="border-t border-line p-5 bg-bg">
+                {d.inhoud?.trim() ? <DocTekst inhoud={d.inhoud} /> : <p className="muted small">Nog geen tekst.</p>}
+                {d.status === "getekend" && d.getekend_hash && (
+                  <p className="small muted mt-4 break-all">
+                    IP {d.getekend_ip ?? "onbekend"} · vingerafdruk {d.getekend_hash}
+                  </p>
+                )}
+              </div>
+            )}
           </li>
         ))}
-        {!documents.length && <p className="muted small">Nog geen documenten. Plaats de standaardset, of voeg er één toe.</p>}
+        {!documents.length && <p className="muted small">Nog geen documenten voor deze klant.</p>}
       </ul>
-      {!documents.length && (
-        <button onClick={standaardSet} disabled={bezig} className="btn ghost self-start">
-          Standaardset plaatsen (overeenkomst, voorwaarden, verwerkersovereenkomst)
+
+      <div className="flex flex-wrap items-end gap-3">
+        <button onClick={() => klaarzetten()} disabled={bezig} className="btn ghost">
+          Klaarzetten volgens pakket en extra&apos;s
         </button>
-      )}
-      <div className="panel border border-line rounded-md p-4 grid gap-3 max-w-md">
-        <label className="field">
-          Titel
-          <input value={titel} onChange={(e) => setTitel(e.target.value)} />
-        </label>
-        <label className="field">
-          Type
-          <input value={type} onChange={(e) => setType(e.target.value)} />
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={tekenen} onChange={(e) => setTekenen(e.target.checked)} />
-          Moet getekend worden
-        </label>
-        <button onClick={toevoegen} disabled={bezig || !titel} className="btn sm self-start">
-          Document klaarzetten
-        </button>
+        {beschikbaar.length > 0 && (
+          <div className="flex items-end gap-2">
+            <label className="field">
+              Handmatig toevoegen
+              <select value={kies} onChange={(e) => setKies(e.target.value)}>
+                <option value="">Kies een document</option>
+                {beschikbaar.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.titel}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn sm" disabled={!kies || bezig} onClick={() => klaarzetten(kies)}>
+              Toevoegen
+            </button>
+          </div>
+        )}
       </div>
+      {melding && <p className="small muted">{melding}</p>}
+      <p className="small muted">
+        De teksten pas je aan onder Keuken → Documenten. Bij een nieuwe klant en bij een bijgeboekte extra (tab Gegevens) gebeurt het klaarzetten vanzelf. De PDF
+        is er pas na tekenen of akkoord; getekende documenten staan ook in je Archief.
+      </p>
     </div>
   );
 }
@@ -353,13 +418,23 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
   const [naam, setNaam] = useState(client.naam);
   const [bedrijf, setBedrijf] = useState(client.bedrijf ?? "");
   const [welkom, setWelkom] = useState(client.welkom ?? STANDAARD_WELKOM);
+  const [extras, setExtras] = useState<string[]>(client.extras ?? []);
+  const [prijs, setPrijs] = useState(client.prijs ?? "");
   const [bezig, setBezig] = useState(false);
+  const [melding, setMelding] = useState("");
+  const [verwijderOpen, setVerwijderOpen] = useState(false);
+  const [bevestiging, setBevestiging] = useState("");
 
   async function opslaan() {
     setBezig(true);
+    setMelding("");
     const supabase = createClient();
-    await supabase.from("clients").update({ naam, bedrijf, welkom }).eq("id", client.id);
+    const { error } = await supabase
+      .from("clients")
+      .update({ naam, bedrijf, welkom, extras, prijs: prijs.trim() || null })
+      .eq("id", client.id);
     setBezig(false);
+    setMelding(error ? "Opslaan lukte niet." : "Opgeslagen. Documenten die nog niet getekend zijn, zijn bijgewerkt.");
     router.refresh();
   }
 
@@ -371,6 +446,23 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
     router.refresh();
   }
 
+  async function verwijderen() {
+    setBezig(true);
+    setMelding("");
+    const { data, error } = await createClient().functions.invoke("klant-verwijderen", {
+      body: { client_id: client.id, bevestiging },
+    });
+    setBezig(false);
+    if (error || !data?.verwijderd) {
+      setMelding("Verwijderen lukte niet. Controleer het e-mailadres.");
+      return;
+    }
+    router.push("/keuken");
+    router.refresh();
+  }
+
+  const extraMogelijk = EXTRAS.filter((e) => !inbegrepen(client.pakket, e));
+
   return (
     <div className="max-w-md grid gap-4">
       <label className="field">
@@ -380,6 +472,24 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
       <label className="field">
         Bedrijf
         <input value={bedrijf} onChange={(e) => setBedrijf(e.target.value)} />
+      </label>
+      <fieldset className="grid gap-1.5 text-sm">
+        <legend className="small muted mb-1">Bijgeboekt</legend>
+        {extraMogelijk.map((e) => (
+          <label key={e} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={extras.includes(e)}
+              onChange={() => setExtras(extras.includes(e) ? extras.filter((x) => x !== e) : [...extras, e])}
+            />
+            {e}
+          </label>
+        ))}
+        <span className="small muted">Bijboeken zet de bijbehorende documenten vanzelf klaar (bijv. beeldrechten en modelrelease bij een brand shoot).</span>
+      </fieldset>
+      <label className="field">
+        Prijs in de overeenkomst
+        <input value={prijs} onChange={(e) => setPrijs(e.target.value)} placeholder="Leeg = standaardprijs van het aanbod" />
       </label>
       <label className="field">
         Welkomstbericht ({voornaam} ziet dit op haar homepagina)
@@ -394,6 +504,40 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
         </button>
       </div>
       {client.uitgenodigd && <p className="small muted">Uitnodiging verstuurd.</p>}
+      {melding && <p className="small muted">{melding}</p>}
+
+      <div className="mt-8 pt-5 border-t border-line grid gap-3">
+        <h3 className="font-semibold text-sm">Gegevens verwijderen op verzoek</h3>
+        <p className="small muted">
+          Na je eigen check: verwijdert haar login, bestanden en alle gegevens in het portaal. Getekende documenten blijven 7 jaar in je archief
+          (fiscale bewaarplicht).
+        </p>
+        {verwijderOpen ? (
+          <>
+            <label className="field">
+              Typ ter bevestiging haar e-mailadres ({client.email})
+              <input value={bevestiging} onChange={(e) => setBevestiging(e.target.value)} />
+            </label>
+            <div className="flex gap-3">
+              <button
+                className="btn"
+                style={{ background: "var(--pepper)", borderColor: "var(--pepper)" }}
+                disabled={bezig || bevestiging.trim().toLowerCase() !== client.email.toLowerCase()}
+                onClick={verwijderen}
+              >
+                Definitief verwijderen
+              </button>
+              <button className="btn ghost" onClick={() => setVerwijderOpen(false)}>
+                Annuleren
+              </button>
+            </div>
+          </>
+        ) : (
+          <button className="btn ghost self-start" onClick={() => setVerwijderOpen(true)}>
+            Klant verwijderen...
+          </button>
+        )}
+      </div>
     </div>
   );
 }

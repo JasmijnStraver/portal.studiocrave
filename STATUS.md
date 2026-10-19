@@ -20,6 +20,10 @@ houdt bij wat al echt live-klaar is, en wat nog in de demo staat.
   tabs (checklist, menu/courses + skills aan/uit, Brand Foundation-profiel,
   documenten, activiteit, gegevens + uitnodigen), skills beheren met
   versiebeheer.
+- **Documenten en contracten** (`supabase/04` en `05`, Edge Functions
+  `teken-document` en `klant-verwijderen`): standaardteksten per aanbod en extra,
+  automatisch klaarzetten, tekenen of akkoord in het dashboard, PDF pas daarna,
+  archief van 7 jaar, verwijderen op verzoek, beheer en voorbeeld in Keuken → Documenten.
 - **Database**: het volledige schema (20 tabellen, RLS-policies, triggers,
   RPC-functies) staat ongewijzigd in `supabase/01-schema.sql` — dat is de
   bron van waarheid, niet iets dat deze app zelf aanpast.

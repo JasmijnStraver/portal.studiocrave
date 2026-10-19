@@ -192,3 +192,15 @@ img {
   background: var(--line);
   color: var(--muted);
 }
+
+/* Hulpklassen uit het prototype (werden al gebruikt, stonden hier nog niet) */
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.8rem;
+}
+.btn.sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+}

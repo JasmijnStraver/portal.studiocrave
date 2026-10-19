@@ -4,7 +4,12 @@ import { requireAdmin } from "@/lib/auth";
 import LogoutButton from "@/components/portal/LogoutButton";
 
 export default async function KeukenLayout({ children }: { children: React.ReactNode }) {
-  await requireAdmin();
+  const { supabase } = await requireAdmin();
+  // Getekende documenten die je nog niet zelf hebt opgeslagen
+  const { count: nietOpgeslagen } = await supabase
+    .from("document_archief")
+    .select("document_id", { count: "exact", head: true })
+    .is("studio_download_op", null);
 
   return (
     <div className="admin grid md:grid-cols-[260px_1fr] min-h-screen">
@@ -22,6 +27,17 @@ export default async function KeukenLayout({ children }: { children: React.React
           </Link>
           <Link href="/keuken/skills" className="px-3 py-2 rounded hover:bg-creme/10">
             Skills beheer
+          </Link>
+          <Link href="/keuken/documenten" className="px-3 py-2 rounded hover:bg-creme/10">
+            Documenten
+          </Link>
+          <Link href="/keuken/archief" className="px-3 py-2 rounded hover:bg-creme/10 flex items-center justify-between">
+            Archief
+            {!!nietOpgeslagen && (
+              <span className="text-[0.7rem] rounded-full bg-gold text-midnight px-2 py-0.5" title="Nog niet zelf opgeslagen">
+                {nietOpgeslagen}
+              </span>
+            )}
           </Link>
         </nav>
         <div className="mt-auto">
