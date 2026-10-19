@@ -51,6 +51,10 @@ alter table public.portal_settings
   add column if not exists ondertekenaar     text not null default 'Jasmijn Straver',
   add column if not exists bedrijfsgegevens  text not null default 'Studio Crave · info@studiocrave.nl';
 
+-- Je klanten zien jouw handtekening al onder het document in hun portaal (hij staat ook op elke PDF)
+create policy studio_handtekening_lezen on storage.objects for select to authenticated
+  using (bucket_id = 'klanten' and name = '_studio/handtekening.png');
+
 -- Een getekend document kan niemand meer wijzigen (ook jij niet): de PDF en de tekst blijven gelijk
 create or replace function public.trg_document_slot() returns trigger
 language plpgsql as $$

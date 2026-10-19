@@ -30,12 +30,19 @@ const KLEUR = {
   midnight: rgb(0x3d / 255, 0x14 / 255, 0x19 / 255),
   burgundy: rgb(0x6b / 255, 0x1a / 255, 0x2a / 255),
   gold: rgb(0xc9 / 255, 0xa0 / 255, 0x60 / 255),
+  pepper: rgb(0xc8 / 255, 0x00 / 255, 0x1a / 255),
   muted: rgb(0x8a / 255, 0x72 / 255, 0x74 / 255),
   creme: rgb(0xf5 / 255, 0xf0 / 255, 0xeb / 255),
 };
 const A4 = { w: 595.28, h: 841.89 };
 const MARGE = { l: 64, r: 64, t: 72, b: 72 };
 const BREEDTE = A4.w - MARGE.l - MARGE.r;
+
+// "1. TAKEN" of "OVERIGE AFSPRAKEN": een korte regel helemaal in hoofdletters telt als kop
+export function isHoofdletterKop(r: string) {
+  const zonderNr = r.replace(/^\d+[.)]\s*/, "");
+  return zonderNr.length >= 3 && zonderNr.length <= 60 && /[A-Z]{3}/.test(zonderNr) && zonderNr === zonderNr.toUpperCase() && !/[.:;]$/.test(zonderNr);
+}
 
 export function nlDatumTijd(d: Date) {
   return new Intl.DateTimeFormat("nl-NL", {
@@ -164,11 +171,20 @@ export async function maakDocumentPdf(input: DocumentPdfInput): Promise<Uint8Arr
   for (const ruw of regels) {
     const r = ruw.trim();
     if (!r) { y -= lijst ? 10 : 6; lijst = false; continue; }
-    if (/^#{1,2}\s+/.test(r)) {
-      const kop = veilig(r.replace(/^#{1,2}\s+/, ""), f.kop);
-      y -= 8; ruimte(40);
-      page.drawText(kop, { x: MARGE.l, y: y - 15, size: 15, font: f.kop, color: KLEUR.burgundy });
-      y -= 24; lijst = false; continue;
+    // Tussenkop: "## 1. Taken", of een regel in hoofdletters zoals "1. TAKEN"
+    if (/^#{1,2}\s+/.test(r) || isHoofdletterKop(r)) {
+      const tekst = r.replace(/^#{1,2}\s+/, "");
+      const m = tekst.match(/^(\d+[.)])\s*(.*)$/);
+      const nr = m ? m[1] : "";
+      const kop = veilig((m ? m[2] : tekst).toUpperCase(), f.vet);
+      y -= 10; ruimte(44);
+      let x = MARGE.l;
+      if (nr) {
+        page.drawText(nr, { x, y: y - 12, size: 12.5, font: f.vet, color: KLEUR.pepper });
+        x += f.vet.widthOfTextAtSize(nr, 12.5) + 7;
+      }
+      page.drawText(kop, { x, y: y - 12, size: 12.5, font: f.vet, color: KLEUR.midnight });
+      y -= 22; lijst = false; continue;
     }
     if (/^###\s+/.test(r)) { y -= 4; alinea(`**${r.replace(/^###\s+/, "")}**`); continue; }
     if (/^[-*•]\s+/.test(r)) {
@@ -187,8 +203,8 @@ export async function maakDocumentPdf(input: DocumentPdfInput): Promise<Uint8Arr
 
   // ---------- Ondertekening ----------
   if (input.tekenen) {
-    y -= 18; ruimte(190);
-    page.drawText("Ondertekening", { x: MARGE.l, y: y - 15, size: 15, font: f.kop, color: KLEUR.burgundy });
+    y -= 22; ruimte(190);
+    page.drawText("ONDERTEKENING", { x: MARGE.l, y: y - 12, size: 12.5, font: f.vet, color: KLEUR.midnight });
     y -= 30;
     const kolom = (BREEDTE - 24) / 2;
     const vak = async (x: number, rol: string, naam: string, png?: Uint8Array | null, datum?: string) => {
@@ -206,8 +222,8 @@ export async function maakDocumentPdf(input: DocumentPdfInput): Promise<Uint8Arr
       if (datum) page.drawText(veilig(datum, f.tekst), { x, y: top - 16 - hoog - 31, size: 8.5, font: f.tekst, color: KLEUR.muted });
     };
     const o = input.ondertekening;
-    await vak(MARGE.l, "Klant", o?.naam ?? input.klant.naam, o?.handtekeningPng, o ? nlDatumTijd(o.op) : "Nog niet getekend");
-    await vak(MARGE.l + kolom + 24, "Studio Crave", input.ondertekenaar, input.handtekeningStudio, o ? nlDatum(o.op) : undefined);
+    await vak(MARGE.l, "Namens Studio Crave", input.ondertekenaar, input.handtekeningStudio, o ? nlDatum(o.op) : undefined);
+    await vak(MARGE.l + kolom + 24, input.klant.bedrijf ? `Namens ${input.klant.bedrijf}` : "Klant", o?.naam ?? input.klant.naam, o?.handtekeningPng, o ? nlDatumTijd(o.op) : "Nog niet getekend");
     y -= 16 + 70 + 44;
   }
 

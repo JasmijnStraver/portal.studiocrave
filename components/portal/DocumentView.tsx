@@ -9,7 +9,23 @@ import DocTekst from "@/components/documenten/DocTekst";
 import SignaturePad from "@/components/documenten/SignaturePad";
 import type { DocumentRow } from "@/lib/supabase/types";
 
-export default function DocumentView({ doc, naam: standaardNaam }: { doc: DocumentRow; naam: string }) {
+// Het document opent volledig in het dashboard. Onderaan staat het ondertekenblok
+// (Studio Crave en de klant naast elkaar). Pas na het tekenen verschijnt de PDF-download.
+export default function DocumentView({
+  doc,
+  naam: standaardNaam,
+  bedrijf,
+  ondertekenaar,
+  studioHandtekening,
+  eigenHandtekening,
+}: {
+  doc: DocumentRow;
+  naam: string;
+  bedrijf: string | null;
+  ondertekenaar: string;
+  studioHandtekening: string | null;
+  eigenHandtekening: string | null;
+}) {
   const router = useRouter();
   const [naam, setNaam] = useState(standaardNaam);
   const [akkoord, setAkkoord] = useState(false);
@@ -22,8 +38,10 @@ export default function DocumentView({ doc, naam: standaardNaam }: { doc: Docume
     createClient().rpc("log_document_open", { p_doc: doc.id }).then(() => {});
   }, [doc.id]);
 
+  const getekend = doc.status === "getekend";
   const kanTekenen = doc.status === "te-tekenen" && doc.tekenen && !!doc.inhoud?.trim();
   const klaar = naam.trim().length >= 2 && akkoord && !!handtekening;
+  const klantLabel = bedrijf ? `Namens ${bedrijf}` : "Klant";
 
   async function teken() {
     if (!klaar) return;
@@ -62,62 +80,97 @@ export default function DocumentView({ doc, naam: standaardNaam }: { doc: Docume
         ← Alle documenten
       </Link>
 
-      <div className="flex flex-wrap items-end justify-between gap-4 mt-3 mb-6 border-b border-line pb-5">
-        <div>
-          <h1 className="wordmark text-4xl text-midnight">{doc.titel}</h1>
-          <p className="small muted mt-1">
-            {doc.status === "getekend"
-              ? `Getekend door ${doc.getekend_naam ?? standaardNaam} op ${datumTijd(doc.getekend_op)}`
+      <article className="mt-4 rounded-md border border-line bg-surface p-6 md:p-12">
+        <header className="mb-8">
+          <h1 className="wordmark text-4xl md:text-5xl text-midnight">{doc.titel}</h1>
+          <p className="small muted mt-2">
+            {getekend
+              ? `Getekend op ${datumTijd(doc.getekend_op)}`
               : doc.status === "info"
                 ? "Ter informatie"
-                : "Lees het document en teken onderaan"}
+                : "Lees het document rustig door en teken onderaan"}
           </p>
-        </div>
-        {doc.status !== "te-tekenen" && (
-          <button className="btn ghost" onClick={download} disabled={bezig}>
-            {bezig ? "Bezig..." : "Download PDF"}
-          </button>
-        )}
-      </div>
+        </header>
 
-      <article className="rounded-md border border-line bg-surface p-6 md:p-10">
         {doc.inhoud?.trim() ? (
           <DocTekst inhoud={doc.inhoud} verbergEersteKop />
         ) : (
           <p className="muted">Jasmijn zet de tekst van dit document nog voor je klaar.</p>
         )}
-      </article>
 
-      {kanTekenen && (
-        <section className="mt-8 rounded-md border border-line bg-surface p-6 md:p-8 grid gap-5">
-          <div>
-            <h2 className="wordmark text-2xl text-midnight">Ondertekenen</h2>
-            <p className="small muted mt-1">
-              Je handtekening komt samen met de datum en tijd in de PDF. Daarna kun je het document altijd downloaden, en is het vastgelegd zoals het hier staat.
-            </p>
-          </div>
-          <label className="field max-w-sm">
-            Je volledige naam
-            <input value={naam} onChange={(e) => setNaam(e.target.value)} autoComplete="name" />
-          </label>
-          <div className="field">
-            Je handtekening
-            <SignaturePad onChange={setHandtekening} />
-          </div>
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={akkoord} onChange={(e) => setAkkoord(e.target.checked)} className="mt-1" />
-            Ik heb &ldquo;{doc.titel}&rdquo; gelezen en ga ermee akkoord.
-          </label>
-          {fout && <p className="text-sm text-pepper">{fout}</p>}
-          <div>
-            <button className="btn gold" disabled={!klaar || bezig} onClick={teken}>
-              {bezig ? "Bezig met tekenen..." : "Teken document"}
+        {doc.tekenen && doc.inhoud?.trim() && (
+          <section className="mt-12" aria-labelledby="ondertekening">
+            <h3 id="ondertekening" className="font-body font-bold uppercase tracking-[0.06em] text-[1.05rem] text-ink">
+              Ondertekening
+            </h3>
+
+            <div className="grid sm:grid-cols-2 gap-8 mt-5">
+              {/* Studio Crave */}
+              <div>
+                <p className="text-xs uppercase tracking-[0.08em] muted">Namens Studio Crave</p>
+                <div className="h-28 flex items-end border-b border-ink/60 mt-2 pb-1">
+                  {studioHandtekening && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={studioHandtekening} alt={`Handtekening ${ondertekenaar}`} className="max-h-24 w-auto dark:invert" />
+                  )}
+                </div>
+                <p className="mt-2 text-sm">{ondertekenaar}</p>
+              </div>
+
+              {/* Klant */}
+              <div>
+                <p className="text-xs uppercase tracking-[0.08em] muted">{klantLabel}</p>
+                {getekend ? (
+                  <>
+                    <div className="h-28 flex items-end border-b border-ink/60 mt-2 pb-1">
+                      {eigenHandtekening && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={eigenHandtekening} alt="Jouw handtekening" className="max-h-24 w-auto dark:invert" />
+                      )}
+                    </div>
+                    <p className="mt-2 text-sm">{doc.getekend_naam ?? standaardNaam}</p>
+                    <p className="small muted">{datumTijd(doc.getekend_op)}</p>
+                  </>
+                ) : kanTekenen ? (
+                  <div className="mt-2 grid gap-3">
+                    <SignaturePad onChange={setHandtekening} />
+                    <label className="field">
+                      Je volledige naam
+                      <input value={naam} onChange={(e) => setNaam(e.target.value)} autoComplete="name" />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {kanTekenen && (
+              <div className="mt-8 grid gap-4">
+                <label className="flex items-start gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={akkoord} onChange={(e) => setAkkoord(e.target.checked)} className="mt-1" />
+                  Ik heb &ldquo;{doc.titel}&rdquo; gelezen en ga ermee akkoord.
+                </label>
+                <div>
+                  <button className="btn gold" disabled={!klaar || bezig} onClick={teken}>
+                    {bezig ? "Bezig met tekenen..." : "Teken document"}
+                  </button>
+                </div>
+                <p className="small muted">Na het tekenen wordt het document vastgelegd zoals het hier staat, en kun je het als PDF downloaden.</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {(getekend || doc.status === "info") && (
+          <div className="mt-10 pt-6 border-t border-line flex flex-wrap items-center gap-3">
+            <button className="btn" onClick={download} disabled={bezig}>
+              {bezig ? "Bezig..." : "Download als PDF"}
             </button>
+            {getekend && <span className="small muted">Met beide handtekeningen en het ondertekeningsbewijs.</span>}
           </div>
-        </section>
-      )}
+        )}
 
-      {doc.status !== "te-tekenen" && fout && <p className="text-sm text-pepper mt-4">{fout}</p>}
+        {fout && <p className="text-sm text-pepper mt-4">{fout}</p>}
+      </article>
     </div>
   );
 }
