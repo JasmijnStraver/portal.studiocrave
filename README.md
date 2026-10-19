@@ -29,7 +29,8 @@ gedaan.
    - `supabase/01-schema.sql`
    - `supabase/02-skills.sql`
    - `supabase/03-vragenlijst.sql`
-   - `supabase/04-documenten.sql` (contracten: sjablonen, ondertekenen, PDF)
+   - `supabase/04-documenten.sql` (contracten: ondertekenen, PDF, archief)
+   - `supabase/05-documenten-standaard.sql` (de standaardteksten van alle documenten)
 3. **Jezelf admin maken**: registreer een account (via `/login` nadat je de
    env-variabelen hieronder hebt gezet, of via het Supabase-dashboard), en
    zet in tabel `profiles` jouw rol op `admin`:
@@ -45,6 +46,7 @@ gedaan.
    supabase functions deploy platform-update
    supabase functions deploy uitnodigen
    supabase functions deploy teken-document
+   supabase functions deploy klant-verwijderen
    ```
 6. **Secrets zetten** voor de Edge Functions:
    ```
@@ -58,15 +60,19 @@ gedaan.
 
 ## Documenten en contracten
 
-De teksten staan als sjabloon in de database (`document_templates`) en beheer je
-onder **Keuken → Documenten**. Per sjabloon kies je bij welk pakket en welke extra
-hij hoort; bij een nieuwe klant en bij een bijgeboekte extra zet het portaal ze
-automatisch klaar, met naam, bedrijf en pakket ingevuld. De klant leest het
-document in haar portaal en tekent in het tekenvak. De Edge Function
-`teken-document` maakt dan de PDF (tekst, beide handtekeningen en een
-ondertekeningsbewijs met datum, tijd, IP en een SHA-256-vingerafdruk) en zet die
-in `klanten/<client_id>/documenten/`. Een getekend document is daarna vergrendeld.
-Jouw eigen handtekening zet je één keer in de keuken.
+Elk document is een standaardtekst (`supabase/documenten/*.md`, in de database als
+`document_templates`), aan te passen onder **Keuken → Documenten**. Daar zie je ook
+per aanbod welke documenten een klant krijgt, en bekijk je elk document precies zoals
+de klant het ziet. Bij een nieuwe klant en bij een bijgeboekte extra zet het portaal
+ze klaar, met naam, bedrijf, aanbod, prijs, looptijd en jouw bedrijfsgegevens ingevuld.
+
+- Contracten tekent de klant met een handtekening; voorwaarden, privacyverklaring en
+  welkomstgids met een akkoord. Beide onderaan het document, in het dashboard.
+- Pas daarna is er een PDF, voor de klant en voor jou. Daarvóór kan niemand downloaden.
+- Elk getekend stuk gaat ook naar het **Archief** (`document_archief`, opslag `_archief/`)
+  en blijft 7 jaar bewaard, ook als je een klant op haar verzoek verwijdert. Het archief
+  houdt bij welke je zelf nog niet hebt gedownload.
+- Een klant verwijderen (tab Gegevens) wist haar login, bestanden en gegevens, niet het archief.
 
 ## Skills
 

@@ -31,4 +31,20 @@ export const PAKKET_LABELS: Record<string, string> = {
   zelf: "Be Your Own Chef",
 };
 export const DOC_EXTRAS = ["Brand shoot", "Branded templates", "Craveable Identity"] as const;
-export const INVULVELDEN = ["{naam}", "{bedrijf}", "{email}", "{pakket}", "{startdatum}", "{datum}"];
+export const INVULVELDEN = [
+  "{naam}", "{bedrijf}", "{email}", "{pakket}", "{prijs}", "{looptijd}", "{toegang}", "{inhoud}", "{extras}", "{werkwijze}",
+  "{startdatum}", "{datum}", "{studio_naam}", "{studio_adres}", "{studio_kvk}", "{studio_btw}", "{studio_email}",
+];
+
+export interface PakketVelden {
+  prijs?: string;
+  looptijd?: string;
+  toegang?: string;
+  werkwijze?: string;
+  inhoud?: string;
+}
+export interface DocumentVelden {
+  studio: { naam?: string; adres?: string; kvk?: string; btw?: string; email?: string };
+  pakketten: Record<string, PakketVelden>;
+  extras: Record<string, string>;
+}

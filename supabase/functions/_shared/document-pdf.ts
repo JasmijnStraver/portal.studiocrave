@@ -18,7 +18,7 @@ export interface DocumentPdfInput {
   handtekeningStudio?: Uint8Array | null;
   ondertekening?: {
     naam: string;
-    handtekeningPng: Uint8Array;
+    handtekeningPng?: Uint8Array | null;   // leeg bij akkoord geven
     op: Date;
     ip?: string | null;
     apparaat?: string | null;
@@ -162,8 +162,9 @@ export async function maakDocumentPdf(input: DocumentPdfInput): Promise<Uint8Arr
   if (huidig) titelRegels.push(huidig);
   for (const r of titelRegels) { page.drawText(r, { x: MARGE.l, y: y - 26, size: 26, font: f.kop, color: KLEUR.midnight }); y -= 32; }
   y -= 2;
-  const status = input.ondertekening ? `Ondertekend op ${nlDatum(input.ondertekening.op)}`
-    : input.tekenen ? "Nog niet ondertekend" : "Ter informatie";
+  const status = input.ondertekening
+    ? `${input.tekenen ? "Ondertekend" : "Akkoord gegeven"} op ${nlDatum(input.ondertekening.op)}`
+    : input.tekenen ? "Nog niet ondertekend" : "Nog geen akkoord gegeven";
   alinea(`Voor ${input.klant.naam}${input.klant.bedrijf ? " · " + input.klant.bedrijf : ""} · ${status}`, { size: 9.5, kleur: KLEUR.muted });
   y -= 14;
 
@@ -233,7 +234,8 @@ export async function maakDocumentPdf(input: DocumentPdfInput): Promise<Uint8Arr
     const rijen: [string, string][] = [
       ["Document", input.titel + (input.versie ? ` (versie ${input.versie})` : "")],
       ["Document-ID", input.documentId],
-      ["Getekend door", `${o.naam} · ${input.klant.email}`],
+      [input.tekenen ? "Getekend door" : "Akkoord gegeven door", `${o.naam} · ${input.klant.email}`],
+      ["Manier", input.tekenen ? "Handtekening in het portaal" : "Akkoord via het portaal (gelezen en akkoord aangevinkt)"],
       ["Datum en tijd", nlDatumTijd(o.op) + " (Amsterdam)"],
       ["IP-adres", o.ip || "onbekend"],
       ["Apparaat", (o.apparaat || "onbekend").slice(0, 110)],

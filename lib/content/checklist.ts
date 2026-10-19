@@ -27,10 +27,11 @@ export const CHECKLIST: ChecklistFase[] = [
       { id: "aanbetaling", t: "Aanbetaling of eerste factuur voldaan" },
       {
         id: "contracten",
-        t: "Overeenkomst, voorwaarden en andere documenten getekend",
+        t: "Overeenkomst, voorwaarden en andere documenten getekend of akkoord",
         auto: (c) => {
-          const teTekenen = c.documents.filter((d) => d.tekenen);
-          return teTekenen.length > 0 && teTekenen.every((d) => d.status === "getekend");
+          // alles getekend of akkoord gegeven (toestemming klantcase telt pas aan het einde)
+          const nodig = c.documents.filter((d) => d.template_id !== "toestemming-klantcase");
+          return nodig.length > 0 && nodig.every((d) => d.status === "getekend");
         },
       },
       { id: "uitnodiging", t: "Portaal-uitnodiging verstuurd", auto: (c) => c.client.uitgenodigd },

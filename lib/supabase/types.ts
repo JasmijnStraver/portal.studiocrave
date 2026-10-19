@@ -45,6 +45,7 @@ export interface Database {
           uitgenodigd: boolean;
           start: string;
           created_at: string;
+          prijs: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["clients"]["Row"]> & {
           naam: string;
@@ -143,6 +144,30 @@ export interface Database {
         };
         Insert: Partial<Database["public"]["Tables"]["document_templates"]["Row"]> & { id: string; titel: string; type: string };
         Update: Partial<Database["public"]["Tables"]["document_templates"]["Row"]>;
+        Relationships: [];
+      };
+      document_archief: {
+        Row: {
+          document_id: string;
+          client_id: string | null;
+          klant_naam: string;
+          klant_email: string;
+          klant_bedrijf: string | null;
+          titel: string;
+          versie: number | null;
+          inhoud: string | null;
+          handtekening: boolean;
+          getekend_naam: string | null;
+          getekend_op: string;
+          getekend_ip: string | null;
+          getekend_hash: string | null;
+          pdf_path: string;
+          bewaren_tot: string;
+          studio_download_op: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
       quiz_results: {
@@ -247,7 +272,7 @@ export interface Database {
           limieten: Json;
           handtekening_path: string | null;
           ondertekenaar: string;
-          bedrijfsgegevens: string;
+          document_velden: Json;
         };
         Insert: Partial<Database["public"]["Tables"]["portal_settings"]["Row"]>;
         Update: Partial<Database["public"]["Tables"]["portal_settings"]["Row"]>;
@@ -352,6 +377,8 @@ export interface Database {
       log_document_open: { Args: { p_doc: string }; Returns: void };
       documenten_klaarzetten: { Args: { p_client: string; p_template?: string | null }; Returns: number };
       sjabloon_doorvoeren: { Args: { p_template: string }; Returns: number };
+      documenten_alles_bijwerken: { Args: Record<string, never>; Returns: number };
+      document_voorbeeld: { Args: { p_template: string; p_pakket: string; p_extras?: string[] }; Returns: string };
       respond_offer: { Args: { p_offer: string; p_interesse: boolean }; Returns: void };
       toggle_todo: { Args: { p_todo: string; p_klaar: boolean }; Returns: void };
       complete_course: { Args: { p_course: string }; Returns: void };
@@ -377,6 +404,7 @@ export type Client = Database["public"]["Tables"]["clients"]["Row"];
 export type ClientCourse = Database["public"]["Tables"]["client_courses"]["Row"];
 export type FileRow = Database["public"]["Tables"]["files"]["Row"];
 export type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
+export type ArchiefRow = Database["public"]["Tables"]["document_archief"]["Row"];
 export type DocumentTemplate = Database["public"]["Tables"]["document_templates"]["Row"];
 export type SkillRow = Database["public"]["Tables"]["skills"]["Row"];
 export type OfferRow = Database["public"]["Tables"]["offers"]["Row"];

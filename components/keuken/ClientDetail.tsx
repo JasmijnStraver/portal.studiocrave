@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { COURSES, COURSE_ORDER, type CourseId } from "@/lib/content/courses";
-import { PAKKETTEN, STANDAARD_WELKOM } from "@/lib/content/packages";
+import { EXTRAS, PAKKETTEN, STANDAARD_WELKOM, inbegrepen } from "@/lib/content/packages";
 import { checkItems } from "@/lib/content/checklist";
 import { datumTijd, downloadPdf } from "@/lib/content/documenten";
 import DocTekst from "@/components/documenten/DocTekst";
@@ -327,21 +327,25 @@ function DocumentenTab({ clientId, documents, sjablonen }: { clientId: string; d
                 <span className="block">{d.titel}</span>
                 <span className="small muted">
                   {d.status === "getekend"
-                    ? `Getekend door ${d.getekend_naam ?? "klant"} op ${datumTijd(d.getekend_op)}`
-                    : d.status === "info"
-                      ? "Ter informatie"
-                      : "Wacht op handtekening"}
+                    ? `${d.tekenen ? "Getekend" : "Akkoord gegeven"} door ${d.getekend_naam ?? "klant"} op ${datumTijd(d.getekend_op)}`
+                    : d.tekenen
+                      ? "Met handtekening · nog niet getekend"
+                      : "Met akkoord · nog geen akkoord"}
                   {d.versie ? ` · versie ${d.versie}` : ""}
                 </span>
               </span>
               <span className="flex items-center gap-2">
-                <span className={`pill ${d.status === "getekend" ? "klaar" : "open"}`}>{d.status === "getekend" ? "Getekend" : d.status === "info" ? "Info" : "Te tekenen"}</span>
+                <span className={`pill ${d.status === "getekend" ? "klaar" : "open"}`}>
+                  {d.status === "getekend" ? (d.tekenen ? "Getekend" : "Akkoord") : d.tekenen ? "Te tekenen" : "Wacht op akkoord"}
+                </span>
                 <button className="small underline muted" onClick={() => setOpen(open === d.id ? null : d.id)}>
                   {open === d.id ? "Sluiten" : "Bekijken"}
                 </button>
-                <button className="btn sm ghost" disabled={bezig} onClick={() => download(d)}>
-                  PDF
-                </button>
+                {d.status === "getekend" && (
+                  <button className="btn sm ghost" disabled={bezig} onClick={() => download(d)}>
+                    PDF
+                  </button>
+                )}
                 {d.status !== "getekend" && (
                   <button className="small underline muted" onClick={() => verwijderen(d)}>
                     Weghalen
@@ -389,7 +393,8 @@ function DocumentenTab({ clientId, documents, sjablonen }: { clientId: string; d
       </div>
       {melding && <p className="small muted">{melding}</p>}
       <p className="small muted">
-        De teksten pas je aan onder Keuken → Documenten. Bij een nieuwe klant en bij een bijgeboekte extra gebeurt het klaarzetten vanzelf.
+        De teksten pas je aan onder Keuken → Documenten. Bij een nieuwe klant en bij een bijgeboekte extra (tab Gegevens) gebeurt het klaarzetten vanzelf. De PDF
+        is er pas na tekenen of akkoord; getekende documenten staan ook in je Archief.
       </p>
     </div>
   );
@@ -413,13 +418,23 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
   const [naam, setNaam] = useState(client.naam);
   const [bedrijf, setBedrijf] = useState(client.bedrijf ?? "");
   const [welkom, setWelkom] = useState(client.welkom ?? STANDAARD_WELKOM);
+  const [extras, setExtras] = useState<string[]>(client.extras ?? []);
+  const [prijs, setPrijs] = useState(client.prijs ?? "");
   const [bezig, setBezig] = useState(false);
+  const [melding, setMelding] = useState("");
+  const [verwijderOpen, setVerwijderOpen] = useState(false);
+  const [bevestiging, setBevestiging] = useState("");
 
   async function opslaan() {
     setBezig(true);
+    setMelding("");
     const supabase = createClient();
-    await supabase.from("clients").update({ naam, bedrijf, welkom }).eq("id", client.id);
+    const { error } = await supabase
+      .from("clients")
+      .update({ naam, bedrijf, welkom, extras, prijs: prijs.trim() || null })
+      .eq("id", client.id);
     setBezig(false);
+    setMelding(error ? "Opslaan lukte niet." : "Opgeslagen. Documenten die nog niet getekend zijn, zijn bijgewerkt.");
     router.refresh();
   }
 
@@ -431,6 +446,23 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
     router.refresh();
   }
 
+  async function verwijderen() {
+    setBezig(true);
+    setMelding("");
+    const { data, error } = await createClient().functions.invoke("klant-verwijderen", {
+      body: { client_id: client.id, bevestiging },
+    });
+    setBezig(false);
+    if (error || !data?.verwijderd) {
+      setMelding("Verwijderen lukte niet. Controleer het e-mailadres.");
+      return;
+    }
+    router.push("/keuken");
+    router.refresh();
+  }
+
+  const extraMogelijk = EXTRAS.filter((e) => !inbegrepen(client.pakket, e));
+
   return (
     <div className="max-w-md grid gap-4">
       <label className="field">
@@ -440,6 +472,24 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
       <label className="field">
         Bedrijf
         <input value={bedrijf} onChange={(e) => setBedrijf(e.target.value)} />
+      </label>
+      <fieldset className="grid gap-1.5 text-sm">
+        <legend className="small muted mb-1">Bijgeboekt</legend>
+        {extraMogelijk.map((e) => (
+          <label key={e} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={extras.includes(e)}
+              onChange={() => setExtras(extras.includes(e) ? extras.filter((x) => x !== e) : [...extras, e])}
+            />
+            {e}
+          </label>
+        ))}
+        <span className="small muted">Bijboeken zet de bijbehorende documenten vanzelf klaar (bijv. beeldrechten en modelrelease bij een brand shoot).</span>
+      </fieldset>
+      <label className="field">
+        Prijs in de overeenkomst
+        <input value={prijs} onChange={(e) => setPrijs(e.target.value)} placeholder="Leeg = standaardprijs van het aanbod" />
       </label>
       <label className="field">
         Welkomstbericht ({voornaam} ziet dit op haar homepagina)
@@ -454,6 +504,40 @@ function GegevensTab({ client, voornaam }: { client: Client; voornaam: string })
         </button>
       </div>
       {client.uitgenodigd && <p className="small muted">Uitnodiging verstuurd.</p>}
+      {melding && <p className="small muted">{melding}</p>}
+
+      <div className="mt-8 pt-5 border-t border-line grid gap-3">
+        <h3 className="font-semibold text-sm">Gegevens verwijderen op verzoek</h3>
+        <p className="small muted">
+          Na je eigen check: verwijdert haar login, bestanden en alle gegevens in het portaal. Getekende documenten blijven 7 jaar in je archief
+          (fiscale bewaarplicht).
+        </p>
+        {verwijderOpen ? (
+          <>
+            <label className="field">
+              Typ ter bevestiging haar e-mailadres ({client.email})
+              <input value={bevestiging} onChange={(e) => setBevestiging(e.target.value)} />
+            </label>
+            <div className="flex gap-3">
+              <button
+                className="btn"
+                style={{ background: "var(--pepper)", borderColor: "var(--pepper)" }}
+                disabled={bezig || bevestiging.trim().toLowerCase() !== client.email.toLowerCase()}
+                onClick={verwijderen}
+              >
+                Definitief verwijderen
+              </button>
+              <button className="btn ghost" onClick={() => setVerwijderOpen(false)}>
+                Annuleren
+              </button>
+            </div>
+          </>
+        ) : (
+          <button className="btn ghost self-start" onClick={() => setVerwijderOpen(true)}>
+            Klant verwijderen...
+          </button>
+        )}
+      </div>
     </div>
   );
 }
